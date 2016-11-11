@@ -16,24 +16,20 @@ int receiverPin = 8;
 
 // Servo
 int hServoPin = 9;
-int vServoPin = 10;
+int vServoPin = 12;
 
 // Motor 1
 int dir1PinA = 2;
 int dir2PinA = 3;
-int speedPinA = 11; // Needs to be a PWM pin to be able to control motor speed
+int speedPinA = 10; // Needs to be a PWM pin to be able to control motor speed
 
 // Motor 2
 int dir1PinB = 4;
 int dir2PinB = 5;
-int speedPinB = 12; // Needs to be a PWM pin to be able to control motor speed
+int speedPinB = 11; // Needs to be a PWM pin to be able to control motor speed
 
 IRrecv irrecv(receiverPin);        // create instance of 'irrecv'
 decode_results results;            // create instance of 'decode_results'
-
-
-//#define RIGHT 1
-//#define LEFT  -1
 
 struct OneServo
 {
@@ -41,6 +37,7 @@ struct OneServo
   bool sweep;
   int sweepDirection, sweepStep;
   int maxPos, minPos;
+  int maxSweep, minSweep;
   Servo servo;
 
   enum
@@ -56,7 +53,9 @@ struct OneServo
     sweepDirection(_sweepDirection),
     sweepStep(_sweepStep),
     maxPos(_maxPos),
-    minPos(_minPos)
+    minPos(_minPos),
+    maxSweep(_pos + 30),
+    minSweep(_pos - 30)
   {
   }
   attach(const int _pin)
@@ -75,9 +74,9 @@ struct OneServo
     pos += (sweepStep * sweepDirection);
     update();
 
-    if (pos > maxPos)
+    if (pos > maxSweep)
       sweepDirection = LEFT;
-    else if (pos < minPos)
+    else if (pos < minSweep)
       sweepDirection = RIGHT;
   }
   update()
@@ -112,10 +111,10 @@ struct OneServo
 };
 
 int hServoHome = 90 - 7;
-int vServoHome = 90;
+int vServoHome = 90 + 10;
 
 OneServo hOneServo(hServoHome, 10, 170, false, OneServo::RIGHT, 5);
-OneServo vOneServo(vServoHome, 60, 120, false, OneServo::RIGHT);
+OneServo vOneServo(vServoHome, 90, 105, false, OneServo::RIGHT, 3);
 
 Ultrasonic ultrasonic(triggerPin, echoPin);
 
@@ -156,6 +155,10 @@ struct OneMotor
     digitalWrite(dir1Pin, HIGH);
     digitalWrite(dir2Pin, LOW);
   }
+  void setSpeed(const int speed)
+  {
+    analogWrite(speedPin, speed);
+  }
 
 };
 
@@ -184,6 +187,11 @@ void stop()
   rightMotor.stop();
 }
 
+void setSpeed(const int speed = 255)
+{
+  leftMotor.setSpeed(speed);
+  rightMotor.setSpeed(speed);
+}
 
 void goForward(const int speed = 255)
 {
@@ -218,7 +226,7 @@ void turnRight(const int t = 200)
 
 int oneMeasure()
 {
-  int maxMeasures = 10;
+  int maxMeasures = 3;
   int d[maxMeasures];
   for (int i = 0; i < maxMeasures; ++i)
   {
@@ -256,7 +264,7 @@ int hScan()
   Serial.print("right - ");
   Serial.print(rightDist, DEC);
   Serial.print("; left - ");
-  Serial.print(leftDist, DEC);  Serial.println();
+  Serial.print(leftDist, DEC);
 
   int res = 0;
   if (rightDist > 40 && rightDist > leftDist)
@@ -264,11 +272,16 @@ int hScan()
   else if (leftDist > 40 && leftDist > rightDist)
     res = -1;
 
+  Serial.print("; res - ");
+  Serial.print(res, DEC);
+  Serial.println();
+
   return rightDist < leftDist;
 }
 
 bool goForwardMode = false;
 int speed = 255;
+bool lowSpeedMode = false;
 
 void loop()   /*----( LOOP: RUNS CONSTANTLY )----*/
 {
@@ -325,28 +338,54 @@ void loop()   /*----( LOOP: RUNS CONSTANTLY )----*/
 
   if (goForwardMode)
   {
+    hOneServo.move();
+
     int dist = ultrasonic.Ranging(CM);
+
     if (dist < 10)
     {
       stop();
-
+      Serial.print(dist, DEC);
+      Serial.print(" ");
+      
       int scan = hScan();
       if (scan > 0)
       {
+        Serial.println("Dist < 10, turn right");
         turnRight(300);
         goForward(speed);
       }
       else if (scan < 0)
       {
+        Serial.println("Dist < 10, turn left");
         turnLeft(300);
         goForward(speed);
       }
       else
       {
+        Serial.println("Dist < 10, turn around");
         turnLeft(700);
         goForward(speed);
       }
     }
+#if 0
+    else if (dist < 30)
+    {
+      Serial.println("dist < 30 decreasing speed");
+      setSpeed(150);
+      lowSpeedMode = true;
+    }
+    else if(dist > 50)
+    {
+      Serial.println("dist > 50 normal speed");
+      setSpeed(255);
+      lowSpeedMode = false;
+    }
+#endif
+  }
+  else
+  {
+    delay(200);
   }
 
   delay(50);
